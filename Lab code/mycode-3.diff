@@ -1,0 +1,977 @@
+diff --git a/grade-lab-cow b/grade-lab-cow
+index 2a39f82..df95441 100755
+--- a/grade-lab-cow
++++ b/grade-lab-cow
+@@ -29,7 +29,7 @@ def test_file():
+ def test_usertests():
+     r.run_qemu(shell_script([
+         'usertests'
+-    ]), timeout=150)
++    ]), timeout=250)
+     r.match('^ALL TESTS PASSED$')
+ 
+ @test(1, "time")
+diff --git a/kernel/defs.h b/kernel/defs.h
+index c3934d4..e030674 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -62,6 +62,7 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit();
++void            incref(uint64); //added
+ 
+ // log.c
+ void            initlog(int, struct superblock*);
+@@ -171,6 +172,7 @@ uint64          walkaddr(pagetable_t, uint64);
+ int             copyout(pagetable_t, uint64, char *, uint64);
+ int             copyin(pagetable_t, char *, uint64, uint64);
+ int             copyinstr(pagetable_t, char *, uint64, uint64);
++pte_t *         walk(pagetable_t, uint64, int); //added
+ 
+ // plic.c
+ void            plicinit(void);
+diff --git a/kernel/file.c b/kernel/file.c
+index 671e44c..67bbbd5 100644
+--- a/kernel/file.c
++++ b/kernel/file.c
+@@ -106,6 +106,7 @@ filestat(struct file *f, uint64 addr)
+ int
+ fileread(struct file *f, uint64 addr, int n)
+ {
++  //printf("fileread\n");
+   int r = 0;
+ 
+   if(f->readable == 0)
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index fa6a0ac..0ff608e 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -16,11 +16,13 @@ extern char end[]; // first address after kernel.
+ 
+ struct run {
+   struct run *next;
++  //int ref_count; //added step 1: ref count
+ };
+ 
+ struct {
+   struct spinlock lock;
+   struct run *freelist;
++  int ref_count[(PHYSTOP >> 12)]; //ref_count array use 12 right step (3.1)
+ } kmem;
+ 
+ void
+@@ -28,6 +30,9 @@ kinit()
+ {
+   initlock(&kmem.lock, "kmem");
+   freerange(end, (void*)PHYSTOP);
++  for(int i= 0; i < (PHYSTOP >> 12); i++) {
++    kmem.ref_count[i]= 0;
++  }
+ }
+ 
+ void
+@@ -52,11 +57,21 @@ kfree(void *pa)
+     panic("kfree");
+ 
+   // Fill with junk to catch dangling refs.
+-  memset(pa, 1, PGSIZE);
+ 
+   r = (struct run*)pa;
+ 
+   acquire(&kmem.lock);
++  int index= (uint64)r >> 12;
++  kmem.ref_count[index] -= 1; //decrement ref_count
++  int reference = kmem.ref_count[index];
++  release(&kmem.lock);
++
++  if(reference > 0) {
++    return;
++  }
++  memset(pa, 1, PGSIZE);
++
++  acquire(&kmem.lock);
+   r->next = kmem.freelist;
+   kmem.freelist = r;
+   release(&kmem.lock);
+@@ -72,11 +87,25 @@ kalloc(void)
+ 
+   acquire(&kmem.lock);
+   r = kmem.freelist;
+-  if(r)
++  if(r) {
++    int index = (uint64)r >> 12;
++    kmem.ref_count[index] = 1;
+     kmem.freelist = r->next;
++    //r->ref_count= 1; //added step 2: set ref count to 1 for alloc page
++  }
+   release(&kmem.lock);
+ 
+   if(r)
+     memset((char*)r, 5, PGSIZE); // fill with junk
+   return (void*)r;
+ }
++
++//added step 4
++void incref(uint64 pa) {
++  //struct run *r = (struct run*)pa;
++
++  acquire(&kmem.lock);
++  int index = (uint64)pa >> 12;
++  kmem.ref_count[index] += 1;
++  release(&kmem.lock);
++}
+diff --git a/kernel/pipe.c b/kernel/pipe.c
+index e358283..4c8c7f9 100644
+--- a/kernel/pipe.c
++++ b/kernel/pipe.c
+@@ -105,7 +105,7 @@ piperead(struct pipe *pi, uint64 addr, int n)
+   int i;
+   struct proc *pr = myproc();
+   char ch;
+-
++  //printf("piperead\n");
+   acquire(&pi->lock);
+   while(pi->nread == pi->nwrite && pi->writeopen){  //DOC: pipe-empty
+     if(myproc()->killed){
+diff --git a/kernel/riscv.h b/kernel/riscv.h
+index f46ba59..81bdbe8 100644
+--- a/kernel/riscv.h
++++ b/kernel/riscv.h
+@@ -332,6 +332,7 @@ sfence_vma()
+ #define PTE_W (1L << 2)
+ #define PTE_X (1L << 3)
+ #define PTE_U (1L << 4) // 1 -> user can access
++#define PTE_COW (1L << 8) //added
+ 
+ // shift a physical address to the right place for a PTE.
+ #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
+diff --git a/kernel/trap.c b/kernel/trap.c
+index 51a7805..be0a73c 100644
+--- a/kernel/trap.c
++++ b/kernel/trap.c
+@@ -65,6 +65,37 @@ usertrap(void)
+     intr_on();
+ 
+     syscall();
++  } else if(r_scause () == 15) { //step 1:
++
++  uint64 start_va = PGROUNDDOWN(r_stval());
++  pte_t *pte = walk(p->pagetable, start_va, 0); //PTE for faulting page
++
++  if (pte == 0 || !(*pte & PTE_V) || !(*pte & PTE_U) || !(*pte & PTE_COW)) {
++    p->killed = 1;
++  } else  { //page fault to COW page:
++    uint flags = PTE_FLAGS(*pte);
++    flags |= PTE_W;
++    flags &= ~PTE_COW;
++
++    //step 2:
++    char *mem = kalloc(); //allocate new physical page
++    if (mem == 0) {
++      p->killed = 1;
++    } else {
++      char *pa = (char *)PTE2PA(*pte);
++      memmove(mem, pa, PGSIZE); //duplicate content of COW page
++
++      //step 3 remap:
++      uvmunmap(p->pagetable, start_va, PGSIZE, 0);
++      kfree(pa);
++      if (mappages(p->pagetable, start_va, PGSIZE, (uint64)mem, flags) != 0) {
++        //kfree(mem);
++        p->killed = 1;
++      }
++    }
++  }
++
++
+   } else if((which_dev = devintr()) != 0){
+     // ok
+   } else {
+diff --git a/kernel/vm.c b/kernel/vm.c
+index dd65184..efe532c 100644
+--- a/kernel/vm.c
++++ b/kernel/vm.c
+@@ -75,7 +75,9 @@ kvminithart()
+ //   21..39 -- 9 bits of level-1 index.
+ //   12..20 -- 9 bits of level-0 index.
+ //    0..12 -- 12 bits of byte offset within the page.
+-static pte_t *
++
++//static
++pte_t *
+ walk(pagetable_t pagetable, uint64 va, int alloc)
+ {
+   if(va >= MAXVA)
+@@ -322,7 +324,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+   pte_t *pte;
+   uint64 pa, i;
+   uint flags;
+-  char *mem;
++  //char *mem;
+ 
+   for(i = 0; i < sz; i += PGSIZE){
+     if((pte = walk(old, i, 0)) == 0)
+@@ -331,13 +333,34 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+       panic("uvmcopy: page not present");
+     pa = PTE2PA(*pte);
+     flags = PTE_FLAGS(*pte);
++
++    //step 1: remove new page alloc
++    /*
+     if((mem = kalloc()) == 0)
+       goto err;
+     memmove(mem, (char*)pa, PGSIZE);
+-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+-      kfree(mem);
++    */
++
++    //step 3: clear PTE_W
++    flags |= PTE_COW; //step 4: privilege flag COW
++    flags &= ~PTE_W;
++
++    if(mappages(new, i, PGSIZE, pa, flags) != 0){ //step 2: map parent's physical page to child's virtual
++      //kfree(mem);
+       goto err;
+     }
++    uvmunmap(old, i, PGSIZE, 0);
++    if(mappages(old, i, PGSIZE, pa, flags) != 0){
++      //kfree(mem);
++      goto err;
++    }
++
++    incref(pa); //added step 5
++
++    //*pte &= ~PTE_W;
++    //pte_t *new_pte = walk(new, i, 0);
++    //*new_pte &= ~PTE_W;
++    //*pte |= PTE_COW;
+   }
+   return 0;
+ 
+@@ -366,6 +389,64 @@ int
+ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+ {
+   uint64 n, va0, pa0;
++  uint64 flags;
++  
++  while(len > 0){
++    va0 = PGROUNDDOWN(dstva);
++    if(va0 > MAXVA){ //pgbug
++      return -1;
++    }
++
++
++    //MODIFICATIONS
++    pte_t *pte = walk(pagetable, va0, 0);
++
++    if((pte == 0) || (*pte & PTE_U) == 0 || (*pte & PTE_V) == 0) {
++      return -1;
++    }
++
++    if (pte && (*pte & PTE_COW)) { //if COW page
++      char *mem = kalloc(); //allocate new page
++      if (mem == 0)
++        return -1;
++    
++      flags = PTE_FLAGS(*pte);
++      flags |= PTE_W;
++      flags &= ~PTE_COW;
++
++      char *pa = (char *)PTE2PA(*pte);
++      memmove(mem, (void*)pa, PGSIZE); //copy COW page content to new one
++
++      uvmunmap(pagetable, va0, PGSIZE, 0);
++      kfree((void*)pa);
++      //remap
++      if (mappages(pagetable, va0, PGSIZE, (uint64)mem, flags) != 0) {
++        //kfree(mem); //decrement
++        return -1;
++      }
++      //pte_t *new_pte = walk(pagetable, va0, 0); //make new page writible
++      //*new_pte |= PTE_W;
++      //*pte &= ~PTE_COW; 
++      //pa0 = (uint64)mem; //update pA0 -> new physical addr
++    }
++    pa0 = PTE2PA(*pte) ;
++    if(pa0 == 0)
++      return -1;
++
++
++    n = PGSIZE - (dstva - va0);
++    if(n > len)
++      n = len;
++    memmove((void *)(pa0 + (dstva - va0)), src, n);
++
++    len -= n;
++    src += n;
++    dstva = va0 + PGSIZE;
++  }
++  return 0;
++
++  /*
++  uint64 n, va0, pa0;
+ 
+   while(len > 0){
+     va0 = PGROUNDDOWN(dstva);
+@@ -382,6 +463,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+     dstva = va0 + PGSIZE;
+   }
+   return 0;
++  */
+ }
+ 
+ // Copy from user to kernel.
+diff --git a/mycode.diff b/mycode.diff
+index fa31e83..8849584 100644
+--- a/mycode.diff
++++ b/mycode.diff
+@@ -1,648 +0,0 @@
+-diff --git a/.vscode/c_cpp_properties.json b/.vscode/c_cpp_properties.json
+-new file mode 100644
+-index 0000000..c2098a2
+---- /dev/null
+-+++ b/.vscode/c_cpp_properties.json
+-@@ -0,0 +1,18 @@
+-+{
+-+  "configurations": [
+-+    {
+-+      "name": "linux-gcc-x64",
+-+      "includePath": [
+-+        "${workspaceFolder}/**"
+-+      ],
+-+      "compilerPath": "/usr/bin/gcc",
+-+      "cStandard": "${default}",
+-+      "cppStandard": "${default}",
+-+      "intelliSenseMode": "linux-gcc-x64",
+-+      "compilerArgs": [
+-+        ""
+-+      ]
+-+    }
+-+  ],
+-+  "version": 4
+-+}
+-\ No newline at end of file
+-diff --git a/.vscode/launch.json b/.vscode/launch.json
+-new file mode 100644
+-index 0000000..11b4741
+---- /dev/null
+-+++ b/.vscode/launch.json
+-@@ -0,0 +1,24 @@
+-+{
+-+  "version": "0.2.0",
+-+  "configurations": [
+-+    {
+-+      "name": "C/C++ Runner: Debug Session",
+-+      "type": "cppdbg",
+-+      "request": "launch",
+-+      "args": [],
+-+      "stopAtEntry": false,
+-+      "externalConsole": false,
+-+      "cwd": "/home/csmajs/avarg116/cs179f-fall23/kernel",
+-+      "program": "/home/csmajs/avarg116/cs179f-fall23/kernel/build/Debug/outDebug",
+-+      "MIMode": "gdb",
+-+      "miDebuggerPath": "gdb",
+-+      "setupCommands": [
+-+        {
+-+          "description": "Enable pretty-printing for gdb",
+-+          "text": "-enable-pretty-printing",
+-+          "ignoreFailures": true
+-+        }
+-+      ]
+-+    }
+-+  ]
+-+}
+-\ No newline at end of file
+-diff --git a/.vscode/settings.json b/.vscode/settings.json
+-new file mode 100644
+-index 0000000..917fd00
+---- /dev/null
+-+++ b/.vscode/settings.json
+-@@ -0,0 +1,63 @@
+-+{
+-+  "C_Cpp_Runner.cCompilerPath": "gcc",
+-+  "C_Cpp_Runner.cppCompilerPath": "g++",
+-+  "C_Cpp_Runner.debuggerPath": "gdb",
+-+  "C_Cpp_Runner.cStandard": "",
+-+  "C_Cpp_Runner.cppStandard": "",
+-+  "C_Cpp_Runner.msvcBatchPath": "",
+-+  "C_Cpp_Runner.useMsvc": false,
+-+  "C_Cpp_Runner.warnings": [
+-+    "-Wall",
+-+    "-Wextra",
+-+    "-Wpedantic",
+-+    "-Wshadow",
+-+    "-Wformat=2",
+-+    "-Wcast-align",
+-+    "-Wconversion",
+-+    "-Wsign-conversion",
+-+    "-Wnull-dereference"
+-+  ],
+-+  "C_Cpp_Runner.msvcWarnings": [
+-+    "/W4",
+-+    "/permissive-",
+-+    "/w14242",
+-+    "/w14287",
+-+    "/w14296",
+-+    "/w14311",
+-+    "/w14826",
+-+    "/w44062",
+-+    "/w44242",
+-+    "/w14905",
+-+    "/w14906",
+-+    "/w14263",
+-+    "/w44265",
+-+    "/w14928"
+-+  ],
+-+  "C_Cpp_Runner.enableWarnings": true,
+-+  "C_Cpp_Runner.warningsAsError": false,
+-+  "C_Cpp_Runner.compilerArgs": [],
+-+  "C_Cpp_Runner.linkerArgs": [],
+-+  "C_Cpp_Runner.includePaths": [],
+-+  "C_Cpp_Runner.includeSearch": [
+-+    "*",
+-+    "**/*"
+-+  ],
+-+  "C_Cpp_Runner.excludeSearch": [
+-+    "**/build",
+-+    "**/build/**",
+-+    "**/.*",
+-+    "**/.*/**",
+-+    "**/.vscode",
+-+    "**/.vscode/**"
+-+  ],
+-+  "C_Cpp_Runner.useAddressSanitizer": false,
+-+  "C_Cpp_Runner.useUndefinedSanitizer": false,
+-+  "C_Cpp_Runner.useLeakSanitizer": false,
+-+  "C_Cpp_Runner.showCompilationTime": false,
+-+  "C_Cpp_Runner.useLinkTimeOptimization": false,
+-+  "C_Cpp_Runner.msvcSecureNoWarnings": false,
+-+  "files.associations": {
+-+    "proc.h": "c",
+-+    "fs.h": "c"
+-+  }
+-+}
+-\ No newline at end of file
+-diff --git a/gradelib.pyc b/gradelib.pyc
+-new file mode 100644
+-index 0000000..e844a1a
+-Binary files /dev/null and b/gradelib.pyc differ
+-diff --git a/kernel/.vscode/c_cpp_properties.json b/kernel/.vscode/c_cpp_properties.json
+-new file mode 100644
+-index 0000000..c2098a2
+---- /dev/null
+-+++ b/kernel/.vscode/c_cpp_properties.json
+-@@ -0,0 +1,18 @@
+-+{
+-+  "configurations": [
+-+    {
+-+      "name": "linux-gcc-x64",
+-+      "includePath": [
+-+        "${workspaceFolder}/**"
+-+      ],
+-+      "compilerPath": "/usr/bin/gcc",
+-+      "cStandard": "${default}",
+-+      "cppStandard": "${default}",
+-+      "intelliSenseMode": "linux-gcc-x64",
+-+      "compilerArgs": [
+-+        ""
+-+      ]
+-+    }
+-+  ],
+-+  "version": 4
+-+}
+-\ No newline at end of file
+-diff --git a/kernel/.vscode/launch.json b/kernel/.vscode/launch.json
+-new file mode 100644
+-index 0000000..11b4741
+---- /dev/null
+-+++ b/kernel/.vscode/launch.json
+-@@ -0,0 +1,24 @@
+-+{
+-+  "version": "0.2.0",
+-+  "configurations": [
+-+    {
+-+      "name": "C/C++ Runner: Debug Session",
+-+      "type": "cppdbg",
+-+      "request": "launch",
+-+      "args": [],
+-+      "stopAtEntry": false,
+-+      "externalConsole": false,
+-+      "cwd": "/home/csmajs/avarg116/cs179f-fall23/kernel",
+-+      "program": "/home/csmajs/avarg116/cs179f-fall23/kernel/build/Debug/outDebug",
+-+      "MIMode": "gdb",
+-+      "miDebuggerPath": "gdb",
+-+      "setupCommands": [
+-+        {
+-+          "description": "Enable pretty-printing for gdb",
+-+          "text": "-enable-pretty-printing",
+-+          "ignoreFailures": true
+-+        }
+-+      ]
+-+    }
+-+  ]
+-+}
+-\ No newline at end of file
+-diff --git a/kernel/.vscode/settings.json b/kernel/.vscode/settings.json
+-new file mode 100644
+-index 0000000..3e5eb95
+---- /dev/null
+-+++ b/kernel/.vscode/settings.json
+-@@ -0,0 +1,59 @@
+-+{
+-+  "C_Cpp_Runner.cCompilerPath": "gcc",
+-+  "C_Cpp_Runner.cppCompilerPath": "g++",
+-+  "C_Cpp_Runner.debuggerPath": "gdb",
+-+  "C_Cpp_Runner.cStandard": "",
+-+  "C_Cpp_Runner.cppStandard": "",
+-+  "C_Cpp_Runner.msvcBatchPath": "",
+-+  "C_Cpp_Runner.useMsvc": false,
+-+  "C_Cpp_Runner.warnings": [
+-+    "-Wall",
+-+    "-Wextra",
+-+    "-Wpedantic",
+-+    "-Wshadow",
+-+    "-Wformat=2",
+-+    "-Wcast-align",
+-+    "-Wconversion",
+-+    "-Wsign-conversion",
+-+    "-Wnull-dereference"
+-+  ],
+-+  "C_Cpp_Runner.msvcWarnings": [
+-+    "/W4",
+-+    "/permissive-",
+-+    "/w14242",
+-+    "/w14287",
+-+    "/w14296",
+-+    "/w14311",
+-+    "/w14826",
+-+    "/w44062",
+-+    "/w44242",
+-+    "/w14905",
+-+    "/w14906",
+-+    "/w14263",
+-+    "/w44265",
+-+    "/w14928"
+-+  ],
+-+  "C_Cpp_Runner.enableWarnings": true,
+-+  "C_Cpp_Runner.warningsAsError": false,
+-+  "C_Cpp_Runner.compilerArgs": [],
+-+  "C_Cpp_Runner.linkerArgs": [],
+-+  "C_Cpp_Runner.includePaths": [],
+-+  "C_Cpp_Runner.includeSearch": [
+-+    "*",
+-+    "**/*"
+-+  ],
+-+  "C_Cpp_Runner.excludeSearch": [
+-+    "**/build",
+-+    "**/build/**",
+-+    "**/.*",
+-+    "**/.*/**",
+-+    "**/.vscode",
+-+    "**/.vscode/**"
+-+  ],
+-+  "C_Cpp_Runner.useAddressSanitizer": false,
+-+  "C_Cpp_Runner.useUndefinedSanitizer": false,
+-+  "C_Cpp_Runner.useLeakSanitizer": false,
+-+  "C_Cpp_Runner.showCompilationTime": false,
+-+  "C_Cpp_Runner.useLinkTimeOptimization": false,
+-+  "C_Cpp_Runner.msvcSecureNoWarnings": false
+-+}
+-\ No newline at end of file
+-diff --git a/kernel/file.c b/kernel/file.c
+-index e8dcf17..2293f5d 100644
+---- a/kernel/file.c
+-+++ b/kernel/file.c
+-@@ -12,17 +12,22 @@
+- #include "file.h"
+- #include "stat.h"
+- #include "proc.h"
+-+//#include "buddy.c"
+-+//#include "list.c"
+- 
+- struct devsw devsw[NDEV];
+- struct {
+-   struct spinlock lock;
+--  struct file file[NFILE];
+-+  //struct file file[NFILE];
+-+  struct file *file; //change
+-+
+- } ftable;
+- 
+- void
+- fileinit(void)
+- {
+-   initlock(&ftable.lock, "ftable");
+-+  //ftable.file= (struct file *)bd_malloc(sizeof(struct file) * NFILE); //change
+- }
+- 
+- // Allocate a file structure.
+-@@ -32,6 +37,19 @@ filealloc(void)
+-   struct file *f;
+- 
+-   acquire(&ftable.lock);
+-+  f = (struct file *)bd_malloc(sizeof(struct file)); //allocate dynamic-sized memory
+-+  release(&ftable.lock);
+-+
+-+  if (f) {
+-+    f->ref = 1;
+-+  }
+-+
+-+  return f;
+-+
+-+  /*
+-+  struct file *f;
+-+
+-+  acquire(&ftable.lock);
+-   for(f = ftable.file; f < ftable.file + NFILE; f++){
+-     if(f->ref == 0){
+-       f->ref = 1;
+-@@ -41,6 +59,7 @@ filealloc(void)
+-   }
+-   release(&ftable.lock);
+-   return 0;
+-+  */
+- }
+- 
+- // Increment ref count for file f.
+-@@ -59,6 +78,17 @@ filedup(struct file *f)
+- void
+- fileclose(struct file *f)
+- {
+-+  acquire(&ftable.lock);
+-+  if (f->ref < 1)
+-+    panic("fileclose");
+-+  if (--f->ref > 0) {
+-+    release(&ftable.lock);
+-+    return;
+-+  }
+-+  bd_free(f); // Deallocate memory using buddy allocator
+-+  release(&ftable.lock);
+-+
+-+  /*
+-   struct file ff;
+- 
+-   acquire(&ftable.lock);
+-@@ -80,6 +110,7 @@ fileclose(struct file *f)
+-     iput(ff.ip);
+-     end_op(ff.ip->dev);
+-   }
+-+  */
+- }
+- 
+- // Get metadata about file f.
+-diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+-index e8bcda9..a684f10 100644
+---- a/kernel/sysproc.c
+-+++ b/kernel/sysproc.c
+-@@ -26,6 +26,7 @@ sys_getpid(void)
+- uint64
+- sys_fork(void)
+- {
+-+  
+-   return fork();
+- }
+- 
+-@@ -41,15 +42,17 @@ sys_wait(void)
+- uint64
+- sys_sbrk(void)
+- {
+--  int addr;
+--  int n;
+- 
+-+  int n;
+-   if(argint(0, &n) < 0)
+-     return -1;
+--  addr = myproc()->sz;
+--  if(growproc(n) < 0)
+--    return -1;
+--  return addr;
+-+     uint64 oldz= myproc()->sz; //old process size
+-+  myproc()->sz +=n; //increase process's size
+-+  if(n < 0) {
+-+    uvmdealloc(myproc()->pagetable, oldz, myproc()->sz); //deallocate memory
+-+  }
+-+ 
+-+  return oldz;
+- }
+- 
+- uint64
+-diff --git a/kernel/trap.c b/kernel/trap.c
+-index 51a7805..5352dd3 100644
+---- a/kernel/trap.c
+-+++ b/kernel/trap.c
+-@@ -67,6 +67,30 @@ usertrap(void)
+-     syscall();
+-   } else if((which_dev = devintr()) != 0){
+-     // ok
+-+    } else if (r_scause() == 13 || r_scause() == 15) { //check page fault
+-+      uint64 faulting_address = r_stval();
+-+      //kill process
+-+      if(faulting_address > myproc()->sz) {
+-+        myproc()->killed= 1;
+-+      }
+-+       if (faulting_address < myproc()->tf->sp) {
+-+        myproc()->killed = 1;
+-+       }
+-+
+-+      uint64 page_boundary = PGROUNDDOWN(faulting_address); //calculate page boundary
+-+
+-+      char *mem = kalloc(); //allocate new page
+-+      if (mem == 0) {
+-+        p->killed= 1;
+-+      } else {
+-+        memset(mem, 0, PGSIZE);
+-+      //map new page to page table
+-+      if (mappages(p->pagetable, page_boundary, PGSIZE, (uint64)mem, PTE_W | PTE_X | PTE_R | PTE_U) != 0) {
+-+                kfree(mem);
+-+                p->killed = 1;
+-+            }
+-+      }
+-+      //edit
+-   } else {
+-     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+-     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+-diff --git a/kernel/vm.c b/kernel/vm.c
+-index 2b99c8b..b95c6b4 100644
+---- a/kernel/vm.c
+-+++ b/kernel/vm.c
+-@@ -5,6 +5,8 @@
+- #include "riscv.h"
+- #include "defs.h"
+- #include "fs.h"
+-+#include "spinlock.h"
+-+#include "proc.h"
+- 
+- /*
+-  * the kernel's page table.
+-@@ -152,6 +154,7 @@ kvmpa(uint64 va)
+- int
+- mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+- {
+-+
+-   uint64 a, last;
+-   pte_t *pte;
+- 
+-@@ -174,8 +177,19 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+- // Remove mappings from a page table. The mappings in
+- // the given range must exist. Optionally free the
+- // physical memory.
+--void
+--uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
+-+// Remove mappings from a page table. The mappings in
+-+// the given range must exist. Optionally free the
+-+// physical memory.
+-+// Remove mappings from a page table. The mappings in
+-+// the given range must exist. Optionally free the
+-+// physical memory.
+-+// Remove mappings from a page table. The mappings in
+-+// the given range must exist. Optionally free the
+-+// physical memory.
+-+// Remove mappings from a page table. The mappings in
+-+// the given range must exist. Optionally free the
+-+// physical memory.
+-+void uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
+- {
+-   uint64 a, last;
+-   pte_t *pte;
+-@@ -184,14 +198,28 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
+-   a = PGROUNDDOWN(va);
+-   last = PGROUNDDOWN(va + size - 1);
+-   for(;;){
+--    if((pte = walk(pagetable, a, 0)) == 0)
+--      panic("uvmunmap: walk");
+-+    if((pte = walk(pagetable, a, 0)) == 0) {
+-+      //panic("uvmunmap: walk");
+-+      if(a == last)
+-+        break;
+-+      a += PGSIZE;
+-+      continue;
+-+    }
+-     if((*pte & PTE_V) == 0){
+--      printf("va=%p pte=%p\n", a, *pte);
+--      panic("uvmunmap: not mapped");
+-+      if(a == last)
+-+        break;
+-+      a += PGSIZE;
+-+      continue;
+-+      //printf("va=%p pte=%p\n", a, *pte);
+-+      //panic("uvmunmap: not mapped");
+-+    }
+-+    if(PTE_FLAGS(*pte) == PTE_V) {
+-+       if(a == last)
+-+        break;
+-+      a += PGSIZE;
+-+      continue;
+-     }
+--    if(PTE_FLAGS(*pte) == PTE_V)
+--      panic("uvmunmap: not a leaf");
+-+      //panic("uvmunmap: not a leaf");
+-     if(do_free){
+-       pa = PTE2PA(*pte);
+-       kfree((void*)pa);
+-@@ -204,6 +232,9 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
+-   }
+- }
+- 
+-+
+-+
+-+
+- // create an empty user page table.
+- pagetable_t
+- uvmcreate()
+-@@ -287,9 +318,11 @@ freewalk(pagetable_t pagetable)
+-       uint64 child = PTE2PA(pte);
+-       freewalk((pagetable_t)child);
+-       pagetable[i] = 0;
+--    } else if(pte & PTE_V){
+--      panic("freewalk: leaf");
+-+    } else if(pte & PTE_V) {
+-+      //panic("freewalk: leaf");
+-+      continue;
+-     }
+-+    
+-   }
+-   kfree((void*)pagetable);
+- }
+-@@ -318,10 +351,14 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+-   char *mem;
+- 
+-   for(i = 0; i < sz; i += PGSIZE){
+--    if((pte = walk(old, i, 0)) == 0)
+--      panic("uvmcopy: pte should exist");
+--    if((*pte & PTE_V) == 0)
+--      panic("uvmcopy: page not present");
+-+    if((pte = walk(old, i, 0)) == 0) {
+-+      continue;
+-+      //panic("uvmcopy: pte should exist");
+-+    }
+-+    if((*pte & PTE_V) == 0) {
+-+      continue;
+-+      //panic("uvmcopy: page not present");
+-+    }
+-     pa = PTE2PA(*pte);
+-     flags = PTE_FLAGS(*pte);
+-     if((mem = kalloc()) == 0)
+-diff --git a/user/.vscode/c_cpp_properties.json b/user/.vscode/c_cpp_properties.json
+-new file mode 100644
+-index 0000000..c2098a2
+---- /dev/null
+-+++ b/user/.vscode/c_cpp_properties.json
+-@@ -0,0 +1,18 @@
+-+{
+-+  "configurations": [
+-+    {
+-+      "name": "linux-gcc-x64",
+-+      "includePath": [
+-+        "${workspaceFolder}/**"
+-+      ],
+-+      "compilerPath": "/usr/bin/gcc",
+-+      "cStandard": "${default}",
+-+      "cppStandard": "${default}",
+-+      "intelliSenseMode": "linux-gcc-x64",
+-+      "compilerArgs": [
+-+        ""
+-+      ]
+-+    }
+-+  ],
+-+  "version": 4
+-+}
+-\ No newline at end of file
+-diff --git a/user/.vscode/launch.json b/user/.vscode/launch.json
+-new file mode 100644
+-index 0000000..e19679d
+---- /dev/null
+-+++ b/user/.vscode/launch.json
+-@@ -0,0 +1,24 @@
+-+{
+-+  "version": "0.2.0",
+-+  "configurations": [
+-+    {
+-+      "name": "C/C++ Runner: Debug Session",
+-+      "type": "cppdbg",
+-+      "request": "launch",
+-+      "args": [],
+-+      "stopAtEntry": false,
+-+      "externalConsole": false,
+-+      "cwd": "/home/csmajs/avarg116/cs179f-fall23/user",
+-+      "program": "/home/csmajs/avarg116/cs179f-fall23/user/build/Debug/outDebug",
+-+      "MIMode": "gdb",
+-+      "miDebuggerPath": "gdb",
+-+      "setupCommands": [
+-+        {
+-+          "description": "Enable pretty-printing for gdb",
+-+          "text": "-enable-pretty-printing",
+-+          "ignoreFailures": true
+-+        }
+-+      ]
+-+    }
+-+  ]
+-+}
+-\ No newline at end of file
+-diff --git a/user/.vscode/settings.json b/user/.vscode/settings.json
+-new file mode 100644
+-index 0000000..3e5eb95
+---- /dev/null
+-+++ b/user/.vscode/settings.json
+-@@ -0,0 +1,59 @@
+-+{
+-+  "C_Cpp_Runner.cCompilerPath": "gcc",
+-+  "C_Cpp_Runner.cppCompilerPath": "g++",
+-+  "C_Cpp_Runner.debuggerPath": "gdb",
+-+  "C_Cpp_Runner.cStandard": "",
+-+  "C_Cpp_Runner.cppStandard": "",
+-+  "C_Cpp_Runner.msvcBatchPath": "",
+-+  "C_Cpp_Runner.useMsvc": false,
+-+  "C_Cpp_Runner.warnings": [
+-+    "-Wall",
+-+    "-Wextra",
+-+    "-Wpedantic",
+-+    "-Wshadow",
+-+    "-Wformat=2",
+-+    "-Wcast-align",
+-+    "-Wconversion",
+-+    "-Wsign-conversion",
+-+    "-Wnull-dereference"
+-+  ],
+-+  "C_Cpp_Runner.msvcWarnings": [
+-+    "/W4",
+-+    "/permissive-",
+-+    "/w14242",
+-+    "/w14287",
+-+    "/w14296",
+-+    "/w14311",
+-+    "/w14826",
+-+    "/w44062",
+-+    "/w44242",
+-+    "/w14905",
+-+    "/w14906",
+-+    "/w14263",
+-+    "/w44265",
+-+    "/w14928"
+-+  ],
+-+  "C_Cpp_Runner.enableWarnings": true,
+-+  "C_Cpp_Runner.warningsAsError": false,
+-+  "C_Cpp_Runner.compilerArgs": [],
+-+  "C_Cpp_Runner.linkerArgs": [],
+-+  "C_Cpp_Runner.includePaths": [],
+-+  "C_Cpp_Runner.includeSearch": [
+-+    "*",
+-+    "**/*"
+-+  ],
+-+  "C_Cpp_Runner.excludeSearch": [
+-+    "**/build",
+-+    "**/build/**",
+-+    "**/.*",
+-+    "**/.*/**",
+-+    "**/.vscode",
+-+    "**/.vscode/**"
+-+  ],
+-+  "C_Cpp_Runner.useAddressSanitizer": false,
+-+  "C_Cpp_Runner.useUndefinedSanitizer": false,
+-+  "C_Cpp_Runner.useLeakSanitizer": false,
+-+  "C_Cpp_Runner.showCompilationTime": false,
+-+  "C_Cpp_Runner.useLinkTimeOptimization": false,
+-+  "C_Cpp_Runner.msvcSecureNoWarnings": false
+-+}
+-\ No newline at end of file

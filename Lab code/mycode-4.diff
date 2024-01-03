@@ -1,0 +1,177 @@
+diff --git a/kernel/file.h b/kernel/file.h
+index 92f6198..0e8142e 100644
+--- a/kernel/file.h
++++ b/kernel/file.h
+@@ -27,7 +27,7 @@ struct inode {
+   short minor;
+   short nlink;
+   uint size;
+-  uint addrs[NDIRECT+1];
++  uint addrs[NDIRECT+2]; //change
+ };
+ 
+ // map major device number to device functions.
+diff --git a/kernel/fs.c b/kernel/fs.c
+index 53586d5..364c5ec 100644
+--- a/kernel/fs.c
++++ b/kernel/fs.c
+@@ -402,7 +402,61 @@ bmap(struct inode *ip, uint bn)
+     return addr;
+   }
+ 
++  bn -= NINDIRECT;
++  uint double_block = (bn / NINDIRECT); //index doubly-direct block
++
++  if(bn < NDOUBLY_INDIRECT){
++    //load doubly-indirect block
++    if((addr = ip->addrs[NDIRECT + 1]) == 0)
++      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
++    bp = bread(ip->dev, addr);
++    a = (uint*)bp->data;
++    if((addr = a[double_block]) == 0){
++      a[double_block] = addr = balloc(ip->dev);
++      log_write(bp);
++    }
++    brelse(bp);
++
++    bp = bread(ip->dev, addr);
++    a = (uint*)bp->data;
++    uint disk_block = (bn % NINDIRECT); //logical block num % num block adresses in single-indirect block
++    if((addr = a[disk_block]) == 0){
++      a[disk_block] = addr = balloc(ip->dev); //allocate new data block
++      log_write(bp);
++    }
++    brelse(bp);
++    return addr;
++  }
++
++  panic("bmap: out of range");
++
++  /*
++  uint addr, *a;
++  struct buf *bp;
++
++  if(bn < NDIRECT){
++    if((addr = ip->addrs[bn]) == 0)
++      ip->addrs[bn] = addr = balloc(ip->dev);
++    return addr;
++  }
++  bn -= NDIRECT;
++
++  if(bn < NINDIRECT){
++    // Load indirect block, allocating if necessary.
++    if((addr = ip->addrs[NDIRECT]) == 0)
++      ip->addrs[NDIRECT] = addr = balloc(ip->dev);
++    bp = bread(ip->dev, addr);
++    a = (uint*)bp->data;
++    if((addr = a[bn]) == 0){
++      a[bn] = addr = balloc(ip->dev);
++      log_write(bp);
++    }
++    brelse(bp);
++    return addr;
++  }
++
+   panic("bmap: out of range");
++  */
+ }
+ 
+ // Truncate inode (discard contents).
+diff --git a/kernel/fs.h b/kernel/fs.h
+index 139dcc9..0345dea 100644
+--- a/kernel/fs.h
++++ b/kernel/fs.h
+@@ -24,9 +24,10 @@ struct superblock {
+ 
+ #define FSMAGIC 0x10203040
+ 
+-#define NDIRECT 12
++#define NDIRECT 11 //allocate room for doubly-indirect block
+ #define NINDIRECT (BSIZE / sizeof(uint))
+-#define MAXFILE (NDIRECT + NINDIRECT)
++#define NDOUBLY_INDIRECT (NINDIRECT*NINDIRECT) //(256*256)
++#define MAXFILE (NDIRECT + NINDIRECT + NDOUBLY_INDIRECT) //65803
+ 
+ // On-disk inode structure
+ struct dinode {
+@@ -35,7 +36,7 @@ struct dinode {
+   short minor;          // Minor device number (T_DEVICE only)
+   short nlink;          // Number of links to inode in file system
+   uint size;            // Size of file (bytes)
+-  uint addrs[NDIRECT+1];   // Data block addresses
++  uint addrs[NDIRECT+2];   // Data block addresses
+ };
+ 
+ // Inodes per block.
+diff --git a/kernel/sysfile.c b/kernel/sysfile.c
+index 9d95ac9..b59a2f3 100644
+--- a/kernel/sysfile.c
++++ b/kernel/sysfile.c
+@@ -252,7 +252,7 @@ create(char *path, short type, short major, short minor)
+   if((ip = dirlookup(dp, name, 0)) != 0){
+     iunlockput(dp);
+     ilock(ip);
+-    if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
++    if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE || ip->type == T_SYMLINK)) //add T_SYMLINK
+       return ip;
+     iunlockput(ip);
+     return 0;
+@@ -286,8 +286,27 @@ create(char *path, short type, short major, short minor)
+ uint64
+ sys_symlink(void)
+ {
+-  //your implementation goes here
+-  return 0;
++  //your implementation goes here //
++  char name[MAXPATH], path[MAXPATH];
++  struct inode *ip;
++
++  if(argstr(0, name, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
++    return -1;
++
++  begin_op(ROOTDEV);
++  if((ip = create(path, T_SYMLINK, 0, 0)) == 0){ //new symbolic link inode
++    end_op(ROOTDEV);
++    return -1; //faliure
++  }
++
++  //write length and target to symbolic link inode
++  int path_length = strlen(name);
++  writei(ip, 0, (uint64)&path_length, 0, sizeof(path_length));
++  writei(ip, 0, (uint64)name, sizeof(int), path_length);
++
++  iunlockput(ip);
++  end_op(ROOTDEV);
++  return 0; //success
+ }
+ 
+ uint64
+@@ -329,6 +348,28 @@ sys_open(void)
+     return -1;
+   }
+ 
++  //modifications
++  if(ip->type == T_SYMLINK && omode != O_NOFOLLOW){ //open symlink without following symbolic link
++    int depth = 0;
++    for(depth = 0; depth < 10 && ip->type == T_SYMLINK; depth++){
++        int path_length;
++        readi(ip, 0, (uint64)&path_length, 0, sizeof(path_length)); //read path length
++        readi(ip, 0, (uint64)path, sizeof(int), path_length); //read target path
++        iunlockput(ip);
++        if((ip = namei(path)) == 0){ //follow symbolic link using target
++            end_op(ROOTDEV);
++            return -1;
++        }
++        ilock(ip);
++    }
++    if(depth >= 10){ //if depth of links > threshold 10
++      iunlockput(ip);
++      end_op(ROOTDEV);
++      return -1;
++    }
++  }
++  //
++
+   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+     if(f)
+       fileclose(f);

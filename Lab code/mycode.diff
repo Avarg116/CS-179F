@@ -1,0 +1,186 @@
+diff --git a/Makefile b/Makefile
+index dcaa3dc..9d6cd06 100644
+--- a/Makefile
++++ b/Makefile
+@@ -140,6 +140,9 @@ UPROGS=\
+ 	$U/_bcachetest\
+ 	$U/_mounttest\
+ 	$U/_crashtest\
++	$U/_sleep\
++	$U/_find\
++	$U/_xargs\
+ 
+ fs.img: mkfs/mkfs README user/xargstest.sh $(UPROGS)
+ 	mkfs/mkfs fs.img README user/xargstest.sh $(UPROGS)
+diff --git a/user/find.c b/user/find.c
+new file mode 100644
+index 0000000..efab372
+--- /dev/null
++++ b/user/find.c
+@@ -0,0 +1,94 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++#include "kernel/fs.h"
++
++char*
++fmtname(char *path)
++{
++  static char buf[DIRSIZ+1];
++  char *p;
++
++  // Find first character after last slash.
++  for(p=path+strlen(path); p >= path && *p != '/'; p--)
++    ;
++  p++;
++
++  // Return blank-padded name.
++  if(strlen(p) >= DIRSIZ)
++    return p;
++  memmove(buf, p, strlen(p));
++  memset(buf+strlen(p), ' ', DIRSIZ-strlen(p));
++  return buf;
++}
++
++void
++find(char *path, char *filename) //filename added to argument
++{
++  char buf[512], *p;
++  int fd;
++  struct dirent de;
++  struct stat st;
++
++  if((fd = open(path, 0)) < 0){ //file descriptor
++    fprintf(2, "find: cannot open %s\n", path);
++    return;
++  }
++
++  if(fstat(fd, &st) < 0){ //entry type
++    fprintf(2, "find: cannot stat %s\n", path);
++    close(fd);
++    return;
++  }
++
++  switch(st.type){
++  case T_FILE:
++    if(strcmp(path, filename) == 0) { //if filename found
++      printf("%s\n", path);
++    }
++    //printf("%s %d %d %l\n", fmtname(path), st.type, st.ino, st.size);
++    break;
++
++  case T_DIR:
++    if(strlen(path) + 1 + DIRSIZ + 1 > sizeof buf){
++      printf("find: path too long\n");
++      break;
++    }
++    strcpy(buf, path);
++    p = buf+strlen(buf);
++    *p++ = '/';
++    while(read(fd, &de, sizeof(de)) == sizeof(de)){
++      if(de.inum == 0) //deleted check
++        continue;
++      memmove(p, de.name, DIRSIZ); //copies name
++      p[DIRSIZ] = 0;
++      if(stat(buf, &st) < 0){
++        printf("find: cannot stat %s\n", buf);
++        continue;
++      }
++      if(st.type == T_DIR && strcmp(de.name, ".") != 0 && strcmp(de.name, "..") != 0) { //if directory
++        find(buf, filename);
++      }
++      else if(st.type == T_FILE && strcmp(de.name, filename) == 0) { //if else file
++        printf("%s\n", buf);
++      }
++      //printf("%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
++    }
++    break;
++  }
++  close(fd);
++}
++
++int
++main(int argc, char *argv[])
++{
++  int i;
++
++  if(argc < 2){
++    //ls(".");
++    exit();
++  }
++  for(i=1; i<argc; i++)
++    find(argv[i], argv[i+1]); //2 arguments
++  exit();
++}
+diff --git a/user/sleep.c b/user/sleep.c
+new file mode 100644
+index 0000000..fd23a59
+--- /dev/null
++++ b/user/sleep.c
+@@ -0,0 +1,14 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++
++int main(int argc, char *argv[]) {
++    if(argc < 2) {
++        fprintf(2, "usage: sleep...\n");
++        exit();
++    }
++    int interrupts= atoi(argv[1]);
++    sleep(interrupts);
++
++    exit();
++}
+diff --git a/user/xargs.c b/user/xargs.c
+new file mode 100644
+index 0000000..d316cb5
+--- /dev/null
++++ b/user/xargs.c
+@@ -0,0 +1,46 @@
++#include "kernel/types.h"
++#include "kernel/stat.h"
++#include "user/user.h"
++#include "kernel/param.h" //for MAXARG
++
++void
++xargs(char *argv[]) 
++{
++  char buf[512], *args[MAXARG]; //input line and arguments
++  int fd= 0; //standard input
++  int num_char;
++
++  while((num_char= read(fd, buf, sizeof(buf))) > 0) {
++    for(int i= 0; i < num_char; i++) {
++      if(buf[i] == '\n') {
++        buf[i]= '\0'; //terminates string
++
++        for(i= 0; i < 2; i++) {
++          args[i]= argv[i+1]; //copy args after xargs
++        }
++        args[i]= buf; //add buf
++        args[i+1]= 0;
++
++        if(fork() == 0) { //child process
++          exec(args[0], args);
++          exit();
++        }
++        else {
++          wait();
++        }
++      }
++    }
++  }
++
++}
++
++int
++main(int argc, char *argv[])
++{
++  if(argc < 3) {
++    fprintf(2, "usage: xargs...\n");
++    exit();
++  }
++  xargs(argv);
++  exit();
++}

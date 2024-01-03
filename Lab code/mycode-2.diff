@@ -1,0 +1,648 @@
+diff --git a/.vscode/c_cpp_properties.json b/.vscode/c_cpp_properties.json
+new file mode 100644
+index 0000000..c2098a2
+--- /dev/null
++++ b/.vscode/c_cpp_properties.json
+@@ -0,0 +1,18 @@
++{
++  "configurations": [
++    {
++      "name": "linux-gcc-x64",
++      "includePath": [
++        "${workspaceFolder}/**"
++      ],
++      "compilerPath": "/usr/bin/gcc",
++      "cStandard": "${default}",
++      "cppStandard": "${default}",
++      "intelliSenseMode": "linux-gcc-x64",
++      "compilerArgs": [
++        ""
++      ]
++    }
++  ],
++  "version": 4
++}
+\ No newline at end of file
+diff --git a/.vscode/launch.json b/.vscode/launch.json
+new file mode 100644
+index 0000000..11b4741
+--- /dev/null
++++ b/.vscode/launch.json
+@@ -0,0 +1,24 @@
++{
++  "version": "0.2.0",
++  "configurations": [
++    {
++      "name": "C/C++ Runner: Debug Session",
++      "type": "cppdbg",
++      "request": "launch",
++      "args": [],
++      "stopAtEntry": false,
++      "externalConsole": false,
++      "cwd": "/home/csmajs/avarg116/cs179f-fall23/kernel",
++      "program": "/home/csmajs/avarg116/cs179f-fall23/kernel/build/Debug/outDebug",
++      "MIMode": "gdb",
++      "miDebuggerPath": "gdb",
++      "setupCommands": [
++        {
++          "description": "Enable pretty-printing for gdb",
++          "text": "-enable-pretty-printing",
++          "ignoreFailures": true
++        }
++      ]
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+new file mode 100644
+index 0000000..917fd00
+--- /dev/null
++++ b/.vscode/settings.json
+@@ -0,0 +1,63 @@
++{
++  "C_Cpp_Runner.cCompilerPath": "gcc",
++  "C_Cpp_Runner.cppCompilerPath": "g++",
++  "C_Cpp_Runner.debuggerPath": "gdb",
++  "C_Cpp_Runner.cStandard": "",
++  "C_Cpp_Runner.cppStandard": "",
++  "C_Cpp_Runner.msvcBatchPath": "",
++  "C_Cpp_Runner.useMsvc": false,
++  "C_Cpp_Runner.warnings": [
++    "-Wall",
++    "-Wextra",
++    "-Wpedantic",
++    "-Wshadow",
++    "-Wformat=2",
++    "-Wcast-align",
++    "-Wconversion",
++    "-Wsign-conversion",
++    "-Wnull-dereference"
++  ],
++  "C_Cpp_Runner.msvcWarnings": [
++    "/W4",
++    "/permissive-",
++    "/w14242",
++    "/w14287",
++    "/w14296",
++    "/w14311",
++    "/w14826",
++    "/w44062",
++    "/w44242",
++    "/w14905",
++    "/w14906",
++    "/w14263",
++    "/w44265",
++    "/w14928"
++  ],
++  "C_Cpp_Runner.enableWarnings": true,
++  "C_Cpp_Runner.warningsAsError": false,
++  "C_Cpp_Runner.compilerArgs": [],
++  "C_Cpp_Runner.linkerArgs": [],
++  "C_Cpp_Runner.includePaths": [],
++  "C_Cpp_Runner.includeSearch": [
++    "*",
++    "**/*"
++  ],
++  "C_Cpp_Runner.excludeSearch": [
++    "**/build",
++    "**/build/**",
++    "**/.*",
++    "**/.*/**",
++    "**/.vscode",
++    "**/.vscode/**"
++  ],
++  "C_Cpp_Runner.useAddressSanitizer": false,
++  "C_Cpp_Runner.useUndefinedSanitizer": false,
++  "C_Cpp_Runner.useLeakSanitizer": false,
++  "C_Cpp_Runner.showCompilationTime": false,
++  "C_Cpp_Runner.useLinkTimeOptimization": false,
++  "C_Cpp_Runner.msvcSecureNoWarnings": false,
++  "files.associations": {
++    "proc.h": "c",
++    "fs.h": "c"
++  }
++}
+\ No newline at end of file
+diff --git a/gradelib.pyc b/gradelib.pyc
+new file mode 100644
+index 0000000..e844a1a
+Binary files /dev/null and b/gradelib.pyc differ
+diff --git a/kernel/.vscode/c_cpp_properties.json b/kernel/.vscode/c_cpp_properties.json
+new file mode 100644
+index 0000000..c2098a2
+--- /dev/null
++++ b/kernel/.vscode/c_cpp_properties.json
+@@ -0,0 +1,18 @@
++{
++  "configurations": [
++    {
++      "name": "linux-gcc-x64",
++      "includePath": [
++        "${workspaceFolder}/**"
++      ],
++      "compilerPath": "/usr/bin/gcc",
++      "cStandard": "${default}",
++      "cppStandard": "${default}",
++      "intelliSenseMode": "linux-gcc-x64",
++      "compilerArgs": [
++        ""
++      ]
++    }
++  ],
++  "version": 4
++}
+\ No newline at end of file
+diff --git a/kernel/.vscode/launch.json b/kernel/.vscode/launch.json
+new file mode 100644
+index 0000000..11b4741
+--- /dev/null
++++ b/kernel/.vscode/launch.json
+@@ -0,0 +1,24 @@
++{
++  "version": "0.2.0",
++  "configurations": [
++    {
++      "name": "C/C++ Runner: Debug Session",
++      "type": "cppdbg",
++      "request": "launch",
++      "args": [],
++      "stopAtEntry": false,
++      "externalConsole": false,
++      "cwd": "/home/csmajs/avarg116/cs179f-fall23/kernel",
++      "program": "/home/csmajs/avarg116/cs179f-fall23/kernel/build/Debug/outDebug",
++      "MIMode": "gdb",
++      "miDebuggerPath": "gdb",
++      "setupCommands": [
++        {
++          "description": "Enable pretty-printing for gdb",
++          "text": "-enable-pretty-printing",
++          "ignoreFailures": true
++        }
++      ]
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/kernel/.vscode/settings.json b/kernel/.vscode/settings.json
+new file mode 100644
+index 0000000..3e5eb95
+--- /dev/null
++++ b/kernel/.vscode/settings.json
+@@ -0,0 +1,59 @@
++{
++  "C_Cpp_Runner.cCompilerPath": "gcc",
++  "C_Cpp_Runner.cppCompilerPath": "g++",
++  "C_Cpp_Runner.debuggerPath": "gdb",
++  "C_Cpp_Runner.cStandard": "",
++  "C_Cpp_Runner.cppStandard": "",
++  "C_Cpp_Runner.msvcBatchPath": "",
++  "C_Cpp_Runner.useMsvc": false,
++  "C_Cpp_Runner.warnings": [
++    "-Wall",
++    "-Wextra",
++    "-Wpedantic",
++    "-Wshadow",
++    "-Wformat=2",
++    "-Wcast-align",
++    "-Wconversion",
++    "-Wsign-conversion",
++    "-Wnull-dereference"
++  ],
++  "C_Cpp_Runner.msvcWarnings": [
++    "/W4",
++    "/permissive-",
++    "/w14242",
++    "/w14287",
++    "/w14296",
++    "/w14311",
++    "/w14826",
++    "/w44062",
++    "/w44242",
++    "/w14905",
++    "/w14906",
++    "/w14263",
++    "/w44265",
++    "/w14928"
++  ],
++  "C_Cpp_Runner.enableWarnings": true,
++  "C_Cpp_Runner.warningsAsError": false,
++  "C_Cpp_Runner.compilerArgs": [],
++  "C_Cpp_Runner.linkerArgs": [],
++  "C_Cpp_Runner.includePaths": [],
++  "C_Cpp_Runner.includeSearch": [
++    "*",
++    "**/*"
++  ],
++  "C_Cpp_Runner.excludeSearch": [
++    "**/build",
++    "**/build/**",
++    "**/.*",
++    "**/.*/**",
++    "**/.vscode",
++    "**/.vscode/**"
++  ],
++  "C_Cpp_Runner.useAddressSanitizer": false,
++  "C_Cpp_Runner.useUndefinedSanitizer": false,
++  "C_Cpp_Runner.useLeakSanitizer": false,
++  "C_Cpp_Runner.showCompilationTime": false,
++  "C_Cpp_Runner.useLinkTimeOptimization": false,
++  "C_Cpp_Runner.msvcSecureNoWarnings": false
++}
+\ No newline at end of file
+diff --git a/kernel/file.c b/kernel/file.c
+index e8dcf17..2293f5d 100644
+--- a/kernel/file.c
++++ b/kernel/file.c
+@@ -12,17 +12,22 @@
+ #include "file.h"
+ #include "stat.h"
+ #include "proc.h"
++//#include "buddy.c"
++//#include "list.c"
+ 
+ struct devsw devsw[NDEV];
+ struct {
+   struct spinlock lock;
+-  struct file file[NFILE];
++  //struct file file[NFILE];
++  struct file *file; //change
++
+ } ftable;
+ 
+ void
+ fileinit(void)
+ {
+   initlock(&ftable.lock, "ftable");
++  //ftable.file= (struct file *)bd_malloc(sizeof(struct file) * NFILE); //change
+ }
+ 
+ // Allocate a file structure.
+@@ -32,6 +37,19 @@ filealloc(void)
+   struct file *f;
+ 
+   acquire(&ftable.lock);
++  f = (struct file *)bd_malloc(sizeof(struct file)); //allocate dynamic-sized memory
++  release(&ftable.lock);
++
++  if (f) {
++    f->ref = 1;
++  }
++
++  return f;
++
++  /*
++  struct file *f;
++
++  acquire(&ftable.lock);
+   for(f = ftable.file; f < ftable.file + NFILE; f++){
+     if(f->ref == 0){
+       f->ref = 1;
+@@ -41,6 +59,7 @@ filealloc(void)
+   }
+   release(&ftable.lock);
+   return 0;
++  */
+ }
+ 
+ // Increment ref count for file f.
+@@ -59,6 +78,17 @@ filedup(struct file *f)
+ void
+ fileclose(struct file *f)
+ {
++  acquire(&ftable.lock);
++  if (f->ref < 1)
++    panic("fileclose");
++  if (--f->ref > 0) {
++    release(&ftable.lock);
++    return;
++  }
++  bd_free(f); // Deallocate memory using buddy allocator
++  release(&ftable.lock);
++
++  /*
+   struct file ff;
+ 
+   acquire(&ftable.lock);
+@@ -80,6 +110,7 @@ fileclose(struct file *f)
+     iput(ff.ip);
+     end_op(ff.ip->dev);
+   }
++  */
+ }
+ 
+ // Get metadata about file f.
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index e8bcda9..a684f10 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -26,6 +26,7 @@ sys_getpid(void)
+ uint64
+ sys_fork(void)
+ {
++  
+   return fork();
+ }
+ 
+@@ -41,15 +42,17 @@ sys_wait(void)
+ uint64
+ sys_sbrk(void)
+ {
+-  int addr;
+-  int n;
+ 
++  int n;
+   if(argint(0, &n) < 0)
+     return -1;
+-  addr = myproc()->sz;
+-  if(growproc(n) < 0)
+-    return -1;
+-  return addr;
++     uint64 oldz= myproc()->sz; //old process size
++  myproc()->sz +=n; //increase process's size
++  if(n < 0) {
++    uvmdealloc(myproc()->pagetable, oldz, myproc()->sz); //deallocate memory
++  }
++ 
++  return oldz;
+ }
+ 
+ uint64
+diff --git a/kernel/trap.c b/kernel/trap.c
+index 51a7805..5352dd3 100644
+--- a/kernel/trap.c
++++ b/kernel/trap.c
+@@ -67,6 +67,30 @@ usertrap(void)
+     syscall();
+   } else if((which_dev = devintr()) != 0){
+     // ok
++    } else if (r_scause() == 13 || r_scause() == 15) { //check page fault
++      uint64 faulting_address = r_stval();
++      //kill process
++      if(faulting_address > myproc()->sz) {
++        myproc()->killed= 1;
++      }
++       if (faulting_address < myproc()->tf->sp) {
++        myproc()->killed = 1;
++       }
++
++      uint64 page_boundary = PGROUNDDOWN(faulting_address); //calculate page boundary
++
++      char *mem = kalloc(); //allocate new page
++      if (mem == 0) {
++        p->killed= 1;
++      } else {
++        memset(mem, 0, PGSIZE);
++      //map new page to page table
++      if (mappages(p->pagetable, page_boundary, PGSIZE, (uint64)mem, PTE_W | PTE_X | PTE_R | PTE_U) != 0) {
++                kfree(mem);
++                p->killed = 1;
++            }
++      }
++      //edit
+   } else {
+     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+diff --git a/kernel/vm.c b/kernel/vm.c
+index 2b99c8b..b95c6b4 100644
+--- a/kernel/vm.c
++++ b/kernel/vm.c
+@@ -5,6 +5,8 @@
+ #include "riscv.h"
+ #include "defs.h"
+ #include "fs.h"
++#include "spinlock.h"
++#include "proc.h"
+ 
+ /*
+  * the kernel's page table.
+@@ -152,6 +154,7 @@ kvmpa(uint64 va)
+ int
+ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+ {
++
+   uint64 a, last;
+   pte_t *pte;
+ 
+@@ -174,8 +177,19 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+ // Remove mappings from a page table. The mappings in
+ // the given range must exist. Optionally free the
+ // physical memory.
+-void
+-uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
++// Remove mappings from a page table. The mappings in
++// the given range must exist. Optionally free the
++// physical memory.
++// Remove mappings from a page table. The mappings in
++// the given range must exist. Optionally free the
++// physical memory.
++// Remove mappings from a page table. The mappings in
++// the given range must exist. Optionally free the
++// physical memory.
++// Remove mappings from a page table. The mappings in
++// the given range must exist. Optionally free the
++// physical memory.
++void uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
+ {
+   uint64 a, last;
+   pte_t *pte;
+@@ -184,14 +198,28 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
+   a = PGROUNDDOWN(va);
+   last = PGROUNDDOWN(va + size - 1);
+   for(;;){
+-    if((pte = walk(pagetable, a, 0)) == 0)
+-      panic("uvmunmap: walk");
++    if((pte = walk(pagetable, a, 0)) == 0) {
++      //panic("uvmunmap: walk");
++      if(a == last)
++        break;
++      a += PGSIZE;
++      continue;
++    }
+     if((*pte & PTE_V) == 0){
+-      printf("va=%p pte=%p\n", a, *pte);
+-      panic("uvmunmap: not mapped");
++      if(a == last)
++        break;
++      a += PGSIZE;
++      continue;
++      //printf("va=%p pte=%p\n", a, *pte);
++      //panic("uvmunmap: not mapped");
++    }
++    if(PTE_FLAGS(*pte) == PTE_V) {
++       if(a == last)
++        break;
++      a += PGSIZE;
++      continue;
+     }
+-    if(PTE_FLAGS(*pte) == PTE_V)
+-      panic("uvmunmap: not a leaf");
++      //panic("uvmunmap: not a leaf");
+     if(do_free){
+       pa = PTE2PA(*pte);
+       kfree((void*)pa);
+@@ -204,6 +232,9 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
+   }
+ }
+ 
++
++
++
+ // create an empty user page table.
+ pagetable_t
+ uvmcreate()
+@@ -287,9 +318,11 @@ freewalk(pagetable_t pagetable)
+       uint64 child = PTE2PA(pte);
+       freewalk((pagetable_t)child);
+       pagetable[i] = 0;
+-    } else if(pte & PTE_V){
+-      panic("freewalk: leaf");
++    } else if(pte & PTE_V) {
++      //panic("freewalk: leaf");
++      continue;
+     }
++    
+   }
+   kfree((void*)pagetable);
+ }
+@@ -318,10 +351,14 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+   char *mem;
+ 
+   for(i = 0; i < sz; i += PGSIZE){
+-    if((pte = walk(old, i, 0)) == 0)
+-      panic("uvmcopy: pte should exist");
+-    if((*pte & PTE_V) == 0)
+-      panic("uvmcopy: page not present");
++    if((pte = walk(old, i, 0)) == 0) {
++      continue;
++      //panic("uvmcopy: pte should exist");
++    }
++    if((*pte & PTE_V) == 0) {
++      continue;
++      //panic("uvmcopy: page not present");
++    }
+     pa = PTE2PA(*pte);
+     flags = PTE_FLAGS(*pte);
+     if((mem = kalloc()) == 0)
+diff --git a/user/.vscode/c_cpp_properties.json b/user/.vscode/c_cpp_properties.json
+new file mode 100644
+index 0000000..c2098a2
+--- /dev/null
++++ b/user/.vscode/c_cpp_properties.json
+@@ -0,0 +1,18 @@
++{
++  "configurations": [
++    {
++      "name": "linux-gcc-x64",
++      "includePath": [
++        "${workspaceFolder}/**"
++      ],
++      "compilerPath": "/usr/bin/gcc",
++      "cStandard": "${default}",
++      "cppStandard": "${default}",
++      "intelliSenseMode": "linux-gcc-x64",
++      "compilerArgs": [
++        ""
++      ]
++    }
++  ],
++  "version": 4
++}
+\ No newline at end of file
+diff --git a/user/.vscode/launch.json b/user/.vscode/launch.json
+new file mode 100644
+index 0000000..e19679d
+--- /dev/null
++++ b/user/.vscode/launch.json
+@@ -0,0 +1,24 @@
++{
++  "version": "0.2.0",
++  "configurations": [
++    {
++      "name": "C/C++ Runner: Debug Session",
++      "type": "cppdbg",
++      "request": "launch",
++      "args": [],
++      "stopAtEntry": false,
++      "externalConsole": false,
++      "cwd": "/home/csmajs/avarg116/cs179f-fall23/user",
++      "program": "/home/csmajs/avarg116/cs179f-fall23/user/build/Debug/outDebug",
++      "MIMode": "gdb",
++      "miDebuggerPath": "gdb",
++      "setupCommands": [
++        {
++          "description": "Enable pretty-printing for gdb",
++          "text": "-enable-pretty-printing",
++          "ignoreFailures": true
++        }
++      ]
++    }
++  ]
++}
+\ No newline at end of file
+diff --git a/user/.vscode/settings.json b/user/.vscode/settings.json
+new file mode 100644
+index 0000000..3e5eb95
+--- /dev/null
++++ b/user/.vscode/settings.json
+@@ -0,0 +1,59 @@
++{
++  "C_Cpp_Runner.cCompilerPath": "gcc",
++  "C_Cpp_Runner.cppCompilerPath": "g++",
++  "C_Cpp_Runner.debuggerPath": "gdb",
++  "C_Cpp_Runner.cStandard": "",
++  "C_Cpp_Runner.cppStandard": "",
++  "C_Cpp_Runner.msvcBatchPath": "",
++  "C_Cpp_Runner.useMsvc": false,
++  "C_Cpp_Runner.warnings": [
++    "-Wall",
++    "-Wextra",
++    "-Wpedantic",
++    "-Wshadow",
++    "-Wformat=2",
++    "-Wcast-align",
++    "-Wconversion",
++    "-Wsign-conversion",
++    "-Wnull-dereference"
++  ],
++  "C_Cpp_Runner.msvcWarnings": [
++    "/W4",
++    "/permissive-",
++    "/w14242",
++    "/w14287",
++    "/w14296",
++    "/w14311",
++    "/w14826",
++    "/w44062",
++    "/w44242",
++    "/w14905",
++    "/w14906",
++    "/w14263",
++    "/w44265",
++    "/w14928"
++  ],
++  "C_Cpp_Runner.enableWarnings": true,
++  "C_Cpp_Runner.warningsAsError": false,
++  "C_Cpp_Runner.compilerArgs": [],
++  "C_Cpp_Runner.linkerArgs": [],
++  "C_Cpp_Runner.includePaths": [],
++  "C_Cpp_Runner.includeSearch": [
++    "*",
++    "**/*"
++  ],
++  "C_Cpp_Runner.excludeSearch": [
++    "**/build",
++    "**/build/**",
++    "**/.*",
++    "**/.*/**",
++    "**/.vscode",
++    "**/.vscode/**"
++  ],
++  "C_Cpp_Runner.useAddressSanitizer": false,
++  "C_Cpp_Runner.useUndefinedSanitizer": false,
++  "C_Cpp_Runner.useLeakSanitizer": false,
++  "C_Cpp_Runner.showCompilationTime": false,
++  "C_Cpp_Runner.useLinkTimeOptimization": false,
++  "C_Cpp_Runner.msvcSecureNoWarnings": false
++}
+\ No newline at end of file
